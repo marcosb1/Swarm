@@ -1,4 +1,7 @@
-from run_v1 import Resource
+from flask import request
+from flask_restful import Resource
+import pprint
+from src.helpers import _validate_honeypot_input
 
 
 class Honeypots(Resource):
@@ -7,6 +10,14 @@ class Honeypots(Resource):
     """
 
     def get(self):
+        """No IP/HPID Passed in, thus returns all honeypots(Limit?)"""
+        args = request.args
+        print(len(args))
+        pprint.pprint(args)
+        if _validate_honeypot_input(args):
+            print("YES")
+        else:
+            print("No")
         return None
 
 
