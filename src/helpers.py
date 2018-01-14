@@ -1,7 +1,15 @@
 import socket
 import copy
+import psycopg2.extras
+from flask import g
+import pprint
+import json
 
 from src.json_templates import response_get_honeypot, response_get_honeypots
+
+db = psycopg2.connect("dbname=" + "Beekeeper" + " user=" + "postgres"
+                            + " host=" + "10.11.12.80" + " password=" + "Password1")
+
 
 def is_valid_ipv4_address(address):
     try:
@@ -63,4 +71,68 @@ def _process_honeypot_get(args):
 
 
 def _build_honeypot_get_response(arg=None, type=None):
-    return None
+
+    hpid = ""
+    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    response = copy.deepcopy(response_get_honeypot)
+
+    if type is "ip":
+        cursor.execute(
+            'Select honeypot_id from honeypot_IPS where ip = %s order by create_time AT TIME ZONE \'UTC\' DESC limit 1',
+            (arg,)
+        )
+
+        # Row holds the HPID
+        row = cursor.fetchone()
+
+        if row:
+            hpid = row["honeypot_id"]
+        else:
+            return json.loads('{"ERROR": "No honeypot found for IP: ' + arg + '"}')
+
+    elif type is "hpid":
+        cursor.execute(
+            'Select honeypot_id from honeypots where honeypot_id = %s limit 1',
+            (arg,)
+        )
+
+        # Row holds the HPID
+        row = cursor.fetchone()
+
+        if row:
+            hpid = row["honeypot_id"]
+        else:
+            return json.loads('{"ERROR": "No honeypot found for HPID: ' + arg + '"}')
+
+    # HPID
+    response["HPID"] = hpid
+
+    # IP History
+    cursor.execute(
+        'Select ip, create_time AT TIME ZONE \'UTC\' from Honeypot_IPS where honeypot_id = %s '
+        'order by create_time AT TIME ZONE \'UTC\' DESC',
+        (hpid,)
+    )
+    ips = cursor.fetchall()
+
+    for ip in ips:
+        response["IP History"].append(ip["ip"])
+
+    # Services
+    cursor.execute(
+        'Select service, port from honeypot_services where honeypot_id = %s',
+        (hpid,)
+    )
+
+    services = cursor.fetchall()
+
+    current_services = []
+    for service in services:
+        if service["service"] in current_services:
+            response["Services"][service["service"]].append(service["port"])
+        else:
+            response["Services"].append(json.loads('{"' + service["service"] + '": []}'))
+            current_services.append(service["service"])
+            pprint.pprint(response)
+
+    pprint.pprint(response)

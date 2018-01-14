@@ -2,7 +2,7 @@ from flask import request
 from flask_restful import Resource
 import pprint
 import json
-from src.helpers import _validate_honeypot_input
+from src.helpers import _validate_honeypot_input, _process_honeypot_get
 
 
 class Honeypots(Resource):
@@ -17,8 +17,10 @@ class Honeypots(Resource):
 
         if _validate_honeypot_input(args):
             print("YES")
+            return _process_honeypot_get(args)
         else:
             return json.loads('{"ERROR": "Input(s) not valid"}')
+
 
 class IPs(Resource):
     """
