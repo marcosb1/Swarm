@@ -73,10 +73,12 @@ def _process_honeypot_get(args):
 def _build_honeypot_get_response(arg=None, type=None):
 
     hpid = ""
+    times = None
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    # cursorTemp = db.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)
     response = copy.deepcopy(response_get_honeypot)
 
-    if type is "ip":
+    if type == "ip":
         cursor.execute(
             'Select honeypot_id from honeypot_IPS where ip = %s order by create_time AT TIME ZONE \'UTC\' DESC limit 1',
             (arg,)
@@ -90,7 +92,7 @@ def _build_honeypot_get_response(arg=None, type=None):
         else:
             return json.loads('{"ERROR": "No honeypot found for IP: ' + arg + '"}')
 
-    elif type is "hpid":
+    elif type == "hpid":
         cursor.execute(
             'Select honeypot_id from honeypots where honeypot_id = %s limit 1',
             (arg,)
@@ -108,31 +110,263 @@ def _build_honeypot_get_response(arg=None, type=None):
     response["HPID"] = hpid
 
     # IP History
+    response = _format_ip_history(cursor, response, hpid)
+
+    # Services
+    response = _format_services(cursor, response, hpid)
+
+    # Number of Attempts, Top IPS, TOP Username, TOP Passwords, Top Geolocation
+    if type == "ip":
+        times = _honeypot_bounds(cursor, arg, hpid)
+        response = _number_of_attempts(cursor, times, type, response)
+        response = _top_ips(cursor, times, type, response)
+        response = _top_usernames(cursor, times, type, response)
+        response = _top_passwords(cursor, times, type, response)
+        response = _top_geolocation(cursor, times, type, response)
+    elif type == "hpid":
+        response = _number_of_attempts(cursor, hpid, type, response)
+        response = _top_ips(cursor, hpid, type, response)
+        response = _top_usernames(cursor, hpid, type, response)
+        response = _top_passwords(cursor, hpid, type, response)
+        response = _top_geolocation(cursor, hpid, type, response)
+
+    pprint.pprint(response)
+    return response
+
+
+def _format_ip_history(cursor, response, hpid):
     cursor.execute(
         'Select ip, create_time AT TIME ZONE \'UTC\' from Honeypot_IPS where honeypot_id = %s '
         'order by create_time AT TIME ZONE \'UTC\' DESC',
         (hpid,)
     )
-    ips = cursor.fetchall()
+    rows = cursor.fetchall()
 
-    for ip in ips:
-        response["IP History"].append(ip["ip"])
+    for row in rows:
+        response["IP History"].append(row["ip"])
 
-    # Services
+    return response
+
+
+def _format_services(cursor, response, hpid):
     cursor.execute(
         'Select service, port from honeypot_services where honeypot_id = %s',
         (hpid,)
     )
 
-    services = cursor.fetchall()
+    rows = cursor.fetchall()
 
     current_services = []
-    for service in services:
-        if service["service"] in current_services:
-            response["Services"][service["service"]].append(service["port"])
-        else:
-            response["Services"].append(json.loads('{"' + service["service"] + '": []}'))
-            current_services.append(service["service"])
-            pprint.pprint(response)
 
-    pprint.pprint(response)
+    for row in rows:
+        if row["service"] in current_services:
+            index = _find_service_index(response, row["service"])
+            response["Services"][index][row["service"]].append(row["port"])
+        else:
+            response["Services"].append({row["service"]: []})
+            index = _find_service_index(response, row["service"])
+            response["Services"][index][row["service"]].append(row["port"])
+            current_services.append(row["service"])
+
+    return response
+
+
+def _find_service_index(response, name):
+    count = 0
+
+    for service in response["Services"]:
+        for key, value in service.items():
+            if key == name:
+                return count
+            else:
+                count = count + 1
+
+
+def _honeypot_bounds(cursor, ip, hpid):
+    create_time = None
+    end_time = None
+
+
+    cursor.execute(
+        'Select ip, create_time from Honeypot_IPS where honeypot_id = %s '
+        'order by create_time ASC ',
+        (hpid,)
+    )
+
+    rows = cursor.fetchall()
+
+    for row in rows:
+        if ip == row["ip"]:
+            create_time = row["create_time"]
+        elif create_time is not None:
+            end_time = row["create_time"]
+            break
+
+    return (create_time, end_time)
+
+
+def _number_of_attempts(cursor, arg, type, response):
+    if type == "ip":
+
+        cursor.execute(
+            'Select honeypot_ip, count(attempt_id) as attempt_count from honeypot_endpoint_get '
+            'where %s AT TIME ZONE \'UTC\' <= timestamp AT TIME ZONE \'UTC\' and '
+            'timestamp AT TIME ZONE \'UTC\' < %s AT TIME ZONE \'UTC\' and '
+            'create_time AT TIME ZONE \'UTC\' = %s AT TIME ZONE \'UTC\' group by honeypot_ip',
+            (arg[0], arg[1], arg[0])
+        )
+
+        row = cursor.fetchone()
+
+        if row:
+            response["Number of Attempts"] = row["attempt_count"]
+
+    elif type == "hpid":
+        cursor.execute(
+            'Select honeypot_ip, count(attempt_id) as attempt_count from honeypot_endpoint_get '
+            'where honeypot_id = %s group by honeypot_ip',
+            (arg,)
+        )
+
+        row = cursor.fetchone()
+
+        if row:
+            response["Number of Attempts"] = row["attempt_count"]
+
+    return response
+
+
+def _top_ips(cursor, arg, type, response):
+    if type == "ip":
+
+        cursor.execute(
+            'Select ip, count(attempt_id) as attempt_count from honeypot_endpoint_get '
+            'where %s AT TIME ZONE \'UTC\' <= timestamp AT TIME ZONE \'UTC\' and '
+            'timestamp AT TIME ZONE \'UTC\' < %s AT TIME ZONE \'UTC\' and create_time '
+            'AT TIME ZONE \'UTC\' = %s AT TIME ZONE \'UTC\' group by ip order by attempt_count DESC limit 10',
+            (arg[0], arg[1], arg[0])
+        )
+
+        rows = cursor.fetchall()
+
+        for row in rows:
+            response["Top IPs"].append({row["ip"]: row["attempt_count"]})
+
+    elif type == "hpid":
+
+        cursor.execute(
+            'Select ip, count(attempt_id) as attempt_count from attacks_connections_attempts inner join '
+            'honeypots on attacks_connections_attempts.honeypot_id = honeypots.honeypot_id where '
+            'attacks_connections_attempts.honeypot_id = %s group by ip order by attempt_count DESC limit 10',
+            (arg,)
+        )
+
+        rows = cursor.fetchall()
+
+        for row in rows:
+            response["Top IPs"].append({row["ip"]: row["attempt_count"]})
+
+    return response
+
+
+def _top_usernames(cursor, arg, type, response):
+    if type == "ip":
+
+        cursor.execute(
+            'Select username, count(username) as attempt_count from honeypot_endpoint_get where %s '
+            'AT TIME ZONE \'UTC\' <= timestamp AT TIME ZONE \'UTC\' and timestamp AT TIME ZONE \'UTC\' < %s '
+            'AT TIME ZONE \'UTC\' and create_time AT TIME ZONE \'UTC\' = %s AT TIME ZONE \'UTC\' group by username '
+            'order by attempt_count DESC limit 10',
+            (arg[0], arg[1], arg[0])
+        )
+
+        rows = cursor.fetchall()
+
+        for row in rows:
+            response["Top Usernames"].append({row["username"]: row["attempt_count"]})
+
+    elif type == "hpid":
+
+        cursor.execute(
+            'Select username, count(username) as attempt_count from attacks_connections_attempts inner join honeypots'
+            ' on attacks_connections_attempts.honeypot_id = honeypots.honeypot_id where '
+            'attacks_connections_attempts.honeypot_id = %s group by username order by attempt_count DESC limit 10',
+            (arg,)
+        )
+
+        rows = cursor.fetchall()
+
+        for row in rows:
+            response["Top Usernames"].append({row["username"]: row["attempt_count"]})
+
+    return response
+
+
+def _top_passwords(cursor, arg, type, response):
+    if type == "ip":
+
+        cursor.execute(
+            'Select password, count(password) as attempt_count from honeypot_endpoint_get where %s '
+            'AT TIME ZONE \'UTC\' <= timestamp AT TIME ZONE \'UTC\' and timestamp AT TIME ZONE \'UTC\' < %s '
+            'AT TIME ZONE \'UTC\' and create_time AT TIME ZONE \'UTC\' = %s AT TIME ZONE \'UTC\' group by password '
+            'order by attempt_count DESC limit 10',
+            (arg[0], arg[1], arg[0])
+        )
+
+        rows = cursor.fetchall()
+
+        for row in rows:
+            response["Top Passwords"].append({row["password"]: row["attempt_count"]})
+
+    elif type == "hpid":
+
+        cursor.execute(
+            'Select password, count(password) as attempt_count from attacks_connections_attempts inner join honeypots'
+            ' on attacks_connections_attempts.honeypot_id = honeypots.honeypot_id where '
+            'attacks_connections_attempts.honeypot_id = %s group by password order by attempt_count DESC limit 10',
+            (arg,)
+        )
+
+        rows = cursor.fetchall()
+
+        for row in rows:
+            response["Top Passwords"].append({row["password"]: row["attempt_count"]})
+
+    return response
+
+
+def _top_geolocation(cursor, arg, type, response):
+    if type == "ip":
+
+        cursor.execute(
+            'Select ip_and_geolocation.country, count(ip_and_geolocation.country) as attempt_count from '
+            'honeypot_endpoint_get INNER JOIN ip_and_geolocation on honeypot_endpoint_get.ip = ip_and_geolocation.ip '
+            'where %s AT TIME ZONE \'UTC\' <= honeypot_endpoint_get.timestamp AT TIME ZONE \'UTC\' and '
+            'honeypot_endpoint_get.timestamp AT TIME ZONE \'UTC\' < %s AT TIME ZONE \'UTC\' and '
+            'honeypot_endpoint_get.create_time AT TIME ZONE \'UTC\' = %s AT TIME ZONE \'UTC\' group by '
+            'ip_and_geolocation.country order by attempt_count DESC limit 10',
+            (arg[0], arg[1], arg[0])
+        )
+
+        rows = cursor.fetchall()
+
+        for row in rows:
+            response["Top Geolocation"].append({row["country"]: row["attempt_count"]})
+
+    elif type == "hpid":
+
+        cursor.execute(
+            'Select ip_and_geolocation.country, count(ip_and_geolocation.country) as attempt_count from '
+            'attacks_connections_attempts inner join honeypots on attacks_connections_attempts.honeypot_id = '
+            'honeypots.honeypot_id INNER JOIN ip_and_geolocation on attacks_connections_attempts.ip = '
+            'ip_and_geolocation.ip where attacks_connections_attempts.honeypot_id = %s group by '
+            'ip_and_geolocation.country order by attempt_count DESC limit 10',
+            (arg,)
+        )
+
+        rows = cursor.fetchall()
+
+        for row in rows:
+            response["Top Geolocation"].append({row["country"]: row["attempt_count"]})
+
+    return response

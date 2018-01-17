@@ -11,6 +11,6 @@ response_get_honeypot = \
         "Number of Attempts": 0,
         "Top IPs": [],
         "Top Usernames": [],
-        "Top Passowrds": [],
-        "Top Geoloction": []
+        "Top Passwords": [],
+        "Top Geolocation": []
     }
