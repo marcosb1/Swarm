@@ -2,10 +2,10 @@ from flask import request
 from flask_restful import Resource
 import pprint
 import json
-from src.helpers import _validate_honeypot_input, _process_honeypot_get
+from src.helpers import _validate_honeypot_input, _process_honeypot_get, _validate_hpid_input, _process_honeypot_put
 
 
-class Honeypots(Resource):
+class HoneypotsGetUpdate(Resource):
     """
     Honeypot Endpoint for getting stats about a given honeypot and even adding honeypots
     """
@@ -17,9 +17,23 @@ class Honeypots(Resource):
 
         if _validate_honeypot_input(args):
             print("YES")
-            return _process_honeypot_get(args)
+            return _process_honeypot_get(args), 200
         else:
-            return json.loads('{"ERROR": "Input(s) not valid"}')
+            return json.loads('{"ERROR": "Input(s) not valid"}'), 400
+
+
+class HoneypotsPutDelete(Resource):
+
+    def put(self, hpid):
+        if _validate_hpid_input(hpid):
+            body = request.get_json(silent=True)
+            pprint.pprint(body)
+
+            print(body["IP"])
+            print("Yes")
+            return _process_honeypot_put(body, hpid)
+        else:
+            return json.loads('{"ERROR": "Input(s) not valid"}'), 400
 
 
 class IPs(Resource):

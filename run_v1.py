@@ -1,7 +1,7 @@
 import logging
 from flask import Flask, g, current_app
 from flask_restful import Api, Resource
-from src.core import Honeypots
+from src.core import HoneypotsGetUpdate, HoneypotsPutDelete
 import psycopg2.extras
 import pprint
 
@@ -12,7 +12,8 @@ import pprint
 
 app = Flask(__name__)
 api = Api(app)
-api.add_resource(Honeypots, '/honeypots')
+api.add_resource(HoneypotsGetUpdate, '/honeypots')
+api.add_resource(HoneypotsPutDelete, '/honeypots/<hpid>')
 
 
 if __name__ == '__main__':

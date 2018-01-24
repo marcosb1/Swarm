@@ -4,6 +4,7 @@ import psycopg2.extras
 from flask import g
 import pprint
 import json
+import arrow
 
 from src.json_templates import response_get_honeypot, response_get_honeypots
 
@@ -53,6 +54,16 @@ def _validate_honeypot_input(args):
             elif key[:4].lower() == 'hpid' and isinstance(value, str) is not True:
                 return False
     return True
+
+
+def _process_honeypot_put(body, hpid):
+
+    if "IP" in body:
+        print("IP!")
+        if is_valid_ipv4_address(body["IP"]) is False:
+            return json.loads('{"ERROR": "IP ' + body["IP"] + ' is not valid"}')
+        else:
+            return _build_honeypot_put_response(body, hpid)
 
 
 def _process_honeypot_get(args):
@@ -387,3 +398,58 @@ def _top_geolocation(cursor, hpid, type, response, arg=None):
             response["Top Geolocation"].append({row["country"]: row["attempt_count"]})
 
     return response
+
+
+def _validate_hpid_input(arg):
+    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    cursor.execute(
+        'Select honeypot_id from honeypots where honeypot_id = %s',
+        (arg,)
+    )
+
+    row = cursor.fetchone()
+
+    if row:
+        return True
+    else:
+        return False
+
+
+def _build_honeypot_put_response(body, hpid):
+    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    if "OS" in body:
+        cursor.execute(
+            'UPDATE Honeypots SET os = %s where honeypot_id = %s',
+            (body["OS"], hpid)
+        )
+        db.commit()
+
+    if "IP" in body:
+        cursor.execute(
+            'Select ip, create_time from Honeypot_IPS where honeypot_id = %s order by create_time DESC',
+            (hpid, )
+        )
+
+        row = cursor.fetchone()
+        create_time = arrow.utcnow()
+
+        if "Timestamp" in body:
+            create_time = arrow.get(body["Timestamp"])
+
+        row_time = arrow.get(row["create_time"])
+        print(row_time.datetime)
+        print(create_time.datetime)
+
+        if row["ip"] != body["IP"] and create_time > row_time:
+            print("IN")
+            print(body["IP"])
+            print(row["ip"])
+            cursor.execute(
+                'INSERT INTO Honeypot_IPS(honeypot_id, ip, create_time) VALUES (%s, %s, %s)',
+                (hpid, body["IP"], create_time.datetime)
+            )
+
+            db.commit()
+
