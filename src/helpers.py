@@ -7,9 +7,10 @@ import json
 import arrow
 
 from src.json_templates import response_get_honeypot, response_get_honeypots
+from src.database import Database
 
-db = psycopg2.connect("dbname=" + "Beekeeper" + " user=" + "postgres"
-                            + " host=" + "10.11.12.80" + " password=" + "Password1")
+db = Database("postgres", "postgres", "Password1", "10.11.12.80", "Beekeeper")
+db.connection_object()
 
 
 def is_valid_ipv4_address(address):
@@ -57,7 +58,6 @@ def _validate_honeypot_input(args):
 
 
 def _process_honeypot_put(body, hpid):
-
     if "IP" in body:
         print("IP!")
         if is_valid_ipv4_address(body["IP"]) is False:
@@ -89,14 +89,7 @@ def _process_honeypot_get(args):
 def _get_hpid(num):
     honeypots = []
 
-    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
-
-    cursor.execute(
-        'Select honeypot_id from honeypots order by honeypot_id ASC limit %s',
-        (num,)
-    )
-
-    rows = cursor.fetchall()
+    rows = db.query_fetch('Select honeypot_id from honeypots order by honeypot_id ASC limit %s', (num,), "all")
 
     for row in rows:
         honeypots.append(row["honeypot_id"])
@@ -108,18 +101,15 @@ def _build_honeypot_get_response(arg=None, type=None):
 
     hpid = ""
     times = None
-    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
     # cursorTemp = db.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)
     response = copy.deepcopy(response_get_honeypot)
 
     if type == "ip":
-        cursor.execute(
-            'Select honeypot_id from honeypot_IPS where ip = %s order by create_time AT TIME ZONE \'UTC\' DESC limit 1',
-            (arg,)
-        )
-
         # Row holds the HPID
-        row = cursor.fetchone()
+        row = db.query_fetch(
+            'Select honeypot_id from honeypot_IPS where ip = %s order by create_time AT TIME ZONE \'UTC\' DESC limit 1',
+            (arg, ), "one"
+        )
 
         if row:
             hpid = row["honeypot_id"]
@@ -127,13 +117,8 @@ def _build_honeypot_get_response(arg=None, type=None):
             return json.loads('{"ERROR": "No honeypot found for IP: ' + arg + '"}')
 
     elif type == "hpid":
-        cursor.execute(
-            'Select honeypot_id from honeypots where honeypot_id = %s limit 1',
-            (arg,)
-        )
-
         # Row holds the HPID
-        row = cursor.fetchone()
+        row = db.query_fetch('Select honeypot_id from honeypots where honeypot_id = %s limit 1', (arg, ), "one")
 
         if row:
             hpid = row["honeypot_id"]
@@ -167,13 +152,9 @@ def _build_honeypot_get_response(arg=None, type=None):
     return response
 
 
-def _format_ip_history(cursor, response, hpid):
-    cursor.execute(
-        'Select ip, create_time AT TIME ZONE \'UTC\' from Honeypot_IPS where honeypot_id = %s '
-        'order by create_time AT TIME ZONE \'UTC\' DESC',
-        (hpid,)
-    )
-    rows = cursor.fetchall()
+def _format_ip_history(response, hpid):
+    rows = db.query_fetch('Select ip, create_time AT TIME ZONE \'UTC\' from Honeypot_IPS where honeypot_id = %s '
+                          'order by create_time AT TIME ZONE \'UTC\' DESC', (hpid, ), "all")
 
     for row in rows:
         response["IP History"].append(row["ip"])
@@ -182,12 +163,7 @@ def _format_ip_history(cursor, response, hpid):
 
 
 def _format_services(cursor, response, hpid):
-    cursor.execute(
-        'Select service, port from honeypot_services where honeypot_id = %s',
-        (hpid,)
-    )
-
-    rows = cursor.fetchall()
+    rows = db.query_fetch('Select service, port from honeypot_services where honeypot_id = %s', (hpid, ), "all")
 
     current_services = []
 
@@ -215,18 +191,12 @@ def _find_service_index(response, name):
                 count = count + 1
 
 
-def _honeypot_bounds(cursor, ip, hpid):
+def _honeypot_bounds(ip, hpid):
     create_time = None
     end_time = None
 
-
-    cursor.execute(
-        'Select ip, create_time from Honeypot_IPS where honeypot_id = %s '
-        'order by create_time ASC ',
-        (hpid,)
-    )
-
-    rows = cursor.fetchall()
+    rows = db.query_fetch('Select ip, create_time from Honeypot_IPS where honeypot_id = %s order by create_time ASC ',
+                          (hpid,), "all")
 
     for row in rows:
         if ip == row["ip"]:
@@ -241,26 +211,16 @@ def _honeypot_bounds(cursor, ip, hpid):
 def _number_of_attempts(cursor, hpid, type, response, arg=None):
     if type == "ip":
 
-        cursor.execute(
-            'Select honeypot_ip, count(attempt_id) as attempt_count from honeypot_endpoint_get '
+        row = db.query_fetch('Select honeypot_ip, count(attempt_id) as attempt_count from honeypot_endpoint_get '
             'where \'[%s, %s]\'::tstzrange @> timestamp and \'[%s, %s)\'::tstzrange @> create_time '
-            'and honeypot_id = %s group by honeypot_ip',
-            (arg[0], arg[1], arg[0], arg[1], hpid)
-        )
-
-        row = cursor.fetchone()
+            'and honeypot_id = %s group by honeypot_ip', (arg[0], arg[1], arg[0], arg[1], hpid, ), "one")
 
         if row:
             response["Number of Attempts"] = row["attempt_count"]
 
     elif type == "hpid":
-        cursor.execute(
-            'Select honeypot_ip, count(attempt_id) as attempt_count from honeypot_endpoint_get '
-            'where honeypot_id = %s group by honeypot_ip',
-            (hpid,)
-        )
-
-        row = cursor.fetchone()
+        row = db.query_fetch('Select honeypot_ip, count(attempt_id) as attempt_count from honeypot_endpoint_get '
+            'where honeypot_id = %s group by honeypot_ip', (hpid,), "one")
 
         if row:
             response["Number of Attempts"] = row["attempt_count"]

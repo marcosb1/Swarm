@@ -1,8 +1,10 @@
 import psycopg2.extras
+import pprint
+import arrow
 
 
 class Database:
-    def __init__(self, db_type, username, password, host, port=None, db_name=None):
+    def __init__(self, db_type, username, password, host, db_name, port=None):
         """
         A database wrapper for Swarm 
         :param username: Username needed for database
@@ -35,16 +37,36 @@ class Database:
         elif self.db_type == "postgres":
             cursor = self.connection_object.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-            cursor.execute(
-                statement,
-                (args,)
-            )
+            try:
+                cursor.execute(
+                    statement,
+                    args
+                )
+            except:
+                return False
 
             if fetch == "all" or fetch is None:
-                return cursor.fetchall()
+                rows = cursor.fetchall()
+                cursor.close()
+                return rows
             elif fetch == "one":
-                return cursor.fetchone()
+                row = cursor.fetchone()
+                cursor.close()
+                return row
 
-    def query_commit(self, statment, args=None):
+    def query_commit(self, statement, args=None):
         if self.connection_object is None:
             return None
+        elif self.db_type == "postgres":
+            cursor = self.connection_object.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+            try:
+                cursor.execute(
+                    statement,
+                    args
+                )
+
+                self.connection_object.commit()
+                return True
+            except:
+                return False
