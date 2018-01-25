@@ -27,11 +27,8 @@ class HoneypotsPutDelete(Resource):
     def put(self, hpid):
         if _validate_hpid_input(hpid):
             body = request.get_json(silent=True)
-            pprint.pprint(body)
 
-            print(body["IP"])
-            print("Yes")
-            return _process_honeypot_put(body, hpid)
+            return _process_honeypot_put(body, hpid), 200
         else:
             return json.loads('{"ERROR": "Input(s) not valid"}'), 400
 
