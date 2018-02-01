@@ -1,6 +1,7 @@
 import logging
 from flask import Flask, g, current_app
 from flask_restful import Api, Resource
+from flask_cors import CORS
 from src.core import HoneypotsGetUpdate, HoneypotsPutDelete
 import psycopg2.extras
 import pprint
@@ -11,6 +12,7 @@ import pprint
 #                     datefmt='%Y-%m-%d %H:%M:%S')
 
 app = Flask(__name__)
+CORS(app)
 api = Api(app)
 api.add_resource(HoneypotsGetUpdate, '/honeypots')
 api.add_resource(HoneypotsPutDelete, '/honeypots/<hpid>')
