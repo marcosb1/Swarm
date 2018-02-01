@@ -161,7 +161,7 @@ def _format_ip_history(response, hpid):
     return response
 
 
-def _format_services(cursor, response, hpid):
+def _format_services(response, hpid):
     rows = db.query_fetch('Select service, port from honeypot_services where honeypot_id = %s', (hpid, ), "all")
 
     current_services = []
