@@ -6,7 +6,7 @@ import pprint
 import json
 import arrow
 
-from src.json_templates import response_get_honeypot, response_get_honeypots
+from src.json_templates import response_get_honeypot, response_get_honeypots, geolocation
 from src.database import Database
 
 db = Database("postgres", "postgres", "Password1", "10.11.12.80", "Beekeeper")
@@ -136,6 +136,7 @@ def _build_honeypot_get_response(arg=None, type=None):
     # Number of Attempts, Top IPS, TOP Username, TOP Passwords, Top Geolocation
     if type == "ip":
         times = _honeypot_bounds(arg, hpid)
+        print(times)
         response = _number_of_attempts(hpid, type, response, times)
         response = _top_ips(hpid, type, response, times)
         response = _top_usernames(hpid, type, response, times)
@@ -311,19 +312,30 @@ def _top_geolocation(hpid, type, response, arg=None):
                               (arg[0], arg[1], arg[0], arg[1], hpid), "all")
 
         for row in rows:
-            response["Top Geolocation"].append({row["country"]: row["attempt_count"]})
+            temp = copy.deepcopy(geolocation)
+            temp["Name"] = row["country"]
+            temp["Count"] = row["attempt_count"]
+            temp["Code"] = row["country_code"]
+
+            response["Top Geolocation"].append(temp)
 
     elif type == "hpid":
 
-        rows = db.query_fetch('Select ip_and_geolocation.country, count(ip_and_geolocation.country) as attempt_count '
+        rows = db.query_fetch('Select ip_and_geolocation.country, Country_Abbreviation.country_code, count(ip_and_geolocation.country) as attempt_count '
                               'from attacks_connections_attempts inner join honeypots on '
                               'attacks_connections_attempts.honeypot_id = honeypots.honeypot_id INNER JOIN '
-                              'ip_and_geolocation on attacks_connections_attempts.ip = ip_and_geolocation.ip where '
-                              'attacks_connections_attempts.honeypot_id = %s group by ip_and_geolocation.country '
-                              'order by attempt_count DESC limit 10', (hpid,), "all")
+                              'ip_and_geolocation on attacks_connections_attempts.ip = ip_and_geolocation.ip '
+                              'INNER JOIN Country_Abbreviation on Country_Abbreviation.country = ip_and_geolocation.country '
+                              'where attacks_connections_attempts.honeypot_id = %s group by ip_and_geolocation.country, Country_Abbreviation.country_code '
+                              'order by attempt_count DESC', (hpid,), "all")
 
         for row in rows:
-            response["Top Geolocation"].append({row["country"]: row["attempt_count"]})
+            temp = copy.deepcopy(geolocation)
+            temp["Name"] = row["country"]
+            temp["Count"] = row["attempt_count"]
+            temp["Code"] = row["country_code"]
+
+            response["Top Geolocation"].append(temp)
 
     return response
 

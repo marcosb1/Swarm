@@ -14,3 +14,10 @@ response_get_honeypot = \
         "Top Passwords": [],
         "Top Geolocation": []
     }
+
+geolocation = \
+    {
+        "Name": "",
+        "Count": 0,
+        "Code": "",
+    }
