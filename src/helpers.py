@@ -313,9 +313,9 @@ def _top_geolocation(hpid, type, response, arg=None):
 
         for row in rows:
             temp = copy.deepcopy(geolocation)
-            temp["Name"] = row["country"]
-            temp["Count"] = row["attempt_count"]
-            temp["Code"] = row["country_code"]
+            temp["name"] = row["country"]
+            temp["value"] = row["attempt_count"]
+            temp["code"] = row["country_code"]
 
             response["Top Geolocation"].append(temp)
 
@@ -331,9 +331,9 @@ def _top_geolocation(hpid, type, response, arg=None):
 
         for row in rows:
             temp = copy.deepcopy(geolocation)
-            temp["Name"] = row["country"]
-            temp["Count"] = row["attempt_count"]
-            temp["Code"] = row["country_code"]
+            temp["name"] = row["country"]
+            temp["value"] = row["attempt_count"]
+            temp["code"] = row["country_code"]
 
             response["Top Geolocation"].append(temp)
 

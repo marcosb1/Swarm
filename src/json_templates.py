@@ -17,7 +17,7 @@ response_get_honeypot = \
 
 geolocation = \
     {
-        "Name": "",
-        "Count": 0,
-        "Code": "",
+        "name": "",
+        "value": 0,
+        "code": "",
     }
