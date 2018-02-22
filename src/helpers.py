@@ -92,16 +92,28 @@ def _validate_request_input(request, count):
     :param count: Number of request
     :return: Return ERROR or modified request
     """
-    if isinstance(request["Request"], str) is not True:
-        raise ValueError(json.loads('{"ERROR": "Request field for request ' + str(count) + ' is not a string"}'))
-    elif ("Services" in request) is False and ("Attempts" in request) is False and ("IPs" in request) is False and (
+    if isinstance(request["Request"], dict) is not True:
+        raise ValueError(json.loads('{"ERROR": "Invalid Request type for request ' + str(count) + '"}'))
+    else:
+        if ("ID" in request["Request"]) and ("Type" in request["Request"]):
+            if isinstance(request["Request"]["ID"], str) is False:
+                raise ValueError(json.loads('{"ERROR": "Request ID was not a string type for request ' + str(count) + '"}'))
+
+            if isinstance(request["Request"]["Type"], str) is False:
+                raise ValueError(json.loads('{"ERROR": "Request Type was not a string type for request ' + str(count) + '"}'))
+            else:
+                request["Request"]["Type"] = request["Request"]["Type"].lower()
+                if request["Request"]["Type"] != "IP" or request["Request"]["Type"] != "HP":
+                    raise ValueError(json.loads('{"ERROR": "Request Type was invalid for request ' + str(count) + '"}'))
+
+        if ("Services" in request) is False and ("Attempts" in request) is False and ("IPs" in request) is False and (
         "Usernames" in request) is False and ("Passwords" in request) is False and (
         "IP History" in request) is False and ("Uptime" in request) is False:
-        if "Default" in request:
-            raise ValueError(json.loads(
-                '{"ERROR": "Default can not be set for any request! Error occurred for request ' + str(count) + '"}'))
-        else:
-            request["Default"] = True
+            if "Default" in request["Request"]:
+                raise ValueError(json.loads(
+                    '{"ERROR": "Default can not be set for any request! Error occurred for request ' + str(count) + '"}'))
+            else:
+                request["Request"]["Default"] = True
 
 
 def _validate_services_input(request, count):
@@ -129,9 +141,6 @@ def _validate_services_input(request, count):
                     raise ValueError(json.loads(
                         '{"ERROR": "Both Start and End Timestamp must be set in Services for request ' + str(
                             count) + '"}'))
-                else:
-                    request["Services"]["Start Timestamp"] = False
-                    request["Services"]["End Timestamp"] = False
             else:
                 raise ValueError(json.loads('{"ERROR": "Invalid input in Services for request ' + str(count) + '"}'))
     else:
@@ -165,9 +174,6 @@ def _validate_attempts_input(request, count):
                     raise ValueError(json.loads(
                         '{"ERROR": "Both Start and End Timestamp must be set in Attempts for request ' + str(
                             count) + '"}'))
-                else:
-                    request["Attempts"]["Start Timestamp"] = False
-                    request["Attempts"]["End Timestamp"] = False
 
                 if "Step Scale" in request["Attempts"]:
                     data_flag = True
@@ -197,7 +203,10 @@ def _validate_attempts_input(request, count):
                     else:
                         raise ValueError(json.loads('{"ERROR": "Attempts Step is not a number for request ' + str(count) + '"}'))
                 else:
-                    request["Attempts"]["Step"] = False
+                    if "Step Scale" in request["Attempts"] and step_flag is True:
+                        request["Attempts"]["Step"] = 1
+                    else:
+                        request["Attempts"]["Step"] = False
 
                 if data_flag is False:
                     raise ValueError(json.loads('{"ERROR": "Invalid input in Attempts for request ' + str(count) + '"}'))
@@ -457,8 +466,7 @@ def _validate_uptime_input(request, count):
                     else:
                         raise ValueError(json.loads('{"ERROR": "Invalid input in Uptime for request ' + str(count) + '"}'))
                 else:
-                    # return False, json.loads('{"ERROR": "Invalid input in Uptime for request ' + str(count) + '"}')
-                    request["Uptime"]["Format"] = False
+                    raise ValueError(json.loads('{"ERROR": "Invalid input in Uptime for request ' + str(count) + '"}'))
             else:
                 raise ValueError(json.loads('{"ERROR": "Invalid input in Uptime for request ' + str(count) + '"}'))
     else:
