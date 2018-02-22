@@ -12,14 +12,17 @@ class HoneypotsGetUpdate(Resource):
 
     def get(self):
         """No IP/HPID Passed in, thus returns all honeypots(Limit?)"""
-        args = request.args
-        pprint.pprint(args)
+        body = request.get_json(silent=True)
 
-        if _validate_honeypot_input(args):
-            print("YES")
-            return _process_honeypot_get(args), 200
+        if body is None:
+            return json.loads('{"ERROR": "GET Requires JSON Body"}'), 400
         else:
-            return json.loads('{"ERROR": "Input(s) not valid"}'), 400
+            try:
+                _validate_honeypot_input(body)
+            except ValueError as error:
+                return error.args[0], 400
+            pprint.pprint(body)
+            return _process_honeypot_get(body), 200
 
 
 class HoneypotsPutDelete(Resource):

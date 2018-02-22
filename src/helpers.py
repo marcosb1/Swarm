@@ -44,17 +44,425 @@ def is_valid_ipv6_address(address):
     return True
 
 
-def _validate_honeypot_input(args):
-    if len(args) == 0:
-        return True
+def _validate_honeypot_input(body):
+    count = 1
+    if len(body["Requests"]) == 0:
+        return json.loads('{"ERROR": "Nothing Requested"}')
     else:
-        for key, value in args.items():
-            if key[:2].lower() == 'ip' and is_valid_ipv4_address(value) is not True:
-                # if is_valid_ipv6_address(value) is not True:
-                    return False
-            elif key[:4].lower() == 'hpid' and isinstance(value, str) is not True:
-                return False
-    return True
+        for request in body["Requests"]:
+            try:
+                _validate_keys_input(request, count)
+                _validate_request_input(request, count)
+                _validate_services_input(request, count)
+                _validate_attempts_input(request, count)
+                _validate_ips_input(request, count)
+                _validate_usernames_input(request, count)
+                _validate_passwords_input(request, count)
+                _validate_ips_history_input(request, count)
+                _validate_uptime_input(request, count)
+            except ValueError:
+                raise
+
+            count = count + 1
+        return body
+
+
+def _key_check(_dict, _list, loc, count):
+    temp_list = list(_dict)
+
+    for key in temp_list:
+        if key not in _list:
+            raise ValueError(json.loads('{"ERROR": "Unsupported key value, ' + str(key) + ', in ' + str(loc) + ' for '
+                                        'request ' + str(count) + '"}'))
+
+
+def _validate_keys_input(request, count):
+    key_list = ["Request", "Services", "Attempts", "IPs", "Usernames", "Passwords", "IP History", "Uptime"]
+
+    try:
+        _key_check(request, key_list, "Requests", count)
+    except ValueError:
+        raise
+
+
+def _validate_request_input(request, count):
+    """
+    Validates Request is a String and check if its a default call
+    :param request: JSON dict
+    :param count: Number of request
+    :return: Return ERROR or modified request
+    """
+    if isinstance(request["Request"], str) is not True:
+        raise ValueError(json.loads('{"ERROR": "Request field for request ' + str(count) + ' is not a string"}'))
+    elif ("Services" in request) is False and ("Attempts" in request) is False and ("IPs" in request) is False and (
+        "Usernames" in request) is False and ("Passwords" in request) is False and (
+        "IP History" in request) is False and ("Uptime" in request) is False:
+        if "Default" in request:
+            raise ValueError(json.loads(
+                '{"ERROR": "Default can not be set for any request! Error occurred for request ' + str(count) + '"}'))
+        else:
+            request["Default"] = True
+
+
+def _validate_services_input(request, count):
+    if "Services" in request:
+        if isinstance(request["Services"], bool) is not True:
+            if isinstance(request["Services"], dict) is True:
+                _key_check(request["Services"], ["Start Timestamp", "End Timestamp"], "Services", count)
+
+                if ("Start Timestamp" in request["Services"]) and ("End Timestamp" in request["Services"]):
+                    # Check if valid timestamps
+                    try:
+                        request["Services"]["Start Timestamp"] = arrow.get(request["Services"]["Start Timestamp"],
+                                                                           'YYYY-MM-DD HH:mm:ss.SZZ').to('utc').datetime
+                    except:
+                        raise ValueError(json.loads(
+                            '{"ERROR": "Invalid Start timestamp in Services for request ' + str(count) + '"}'))
+
+                    try:
+                        request["Services"]["End Timestamp"] = arrow.get(request["Services"]["End Timestamp"],
+                                                                         'YYYY-MM-DD HH:mm:ss.SZZ').to('utc').datetime
+                    except:
+                        raise ValueError(json.loads(
+                            '{"ERROR": "Invalid End timestamp in Services for request ' + str(count) + '"}'))
+                elif ("Start Timestamp" in request["Services"]) or ("End Timestamp" in request["Services"]):
+                    raise ValueError(json.loads(
+                        '{"ERROR": "Both Start and End Timestamp must be set in Services for request ' + str(
+                            count) + '"}'))
+                else:
+                    request["Services"]["Start Timestamp"] = False
+                    request["Services"]["End Timestamp"] = False
+            else:
+                raise ValueError(json.loads('{"ERROR": "Invalid input in Services for request ' + str(count) + '"}'))
+    else:
+        request["Services"] = False
+
+
+def _validate_attempts_input(request, count):
+    if "Attempts" in request:
+        data_flag = False
+        step_flag = False
+        if isinstance(request["Attempts"], bool) is not True:
+            if isinstance(request["Attempts"], dict) is True:
+                _key_check(request["Attempts"], ["Start Timestamp", "End Timestamp", "Step", "Step Scale"], "Attempts", count)
+
+                if ("Start Timestamp" in request["Attempts"]) and ("End Timestamp" in request["Attempts"]):
+                    data_flag = True
+                    try:
+                        request["Attempts"]["Start Timestamp"] = arrow.get(request["Attempts"]["Start Timestamp"],
+                                                                           'YYYY-MM-DD HH:mm:ss.SZZ').to('utc').datetime
+                    except:
+                        raise ValueError(json.loads(
+                            '{"ERROR": "Invalid Start timestamp in Attempts for request ' + str(count) + '"}'))
+
+                    try:
+                        request["Attempts"]["End Timestamp"] = arrow.get(request["Attempts"]["End Timestamp"],
+                                                                         'YYYY-MM-DD HH:mm:ss.SZZ').to('utc').datetime
+                    except:
+                        raise ValueError(json.loads(
+                            '{"ERROR": "Invalid End timestamp in Attempts for request ' + str(count) + '"}'))
+                elif ("Start Timestamp" in request["Attempts"]) or ("End Timestamp" in request["Attempts"]):
+                    raise ValueError(json.loads(
+                        '{"ERROR": "Both Start and End Timestamp must be set in Attempts for request ' + str(
+                            count) + '"}'))
+                else:
+                    request["Attempts"]["Start Timestamp"] = False
+                    request["Attempts"]["End Timestamp"] = False
+
+                if "Step Scale" in request["Attempts"]:
+                    data_flag = True
+                    if isinstance(request["Attempts"]["Step Scale"], str) is True:
+                        request["Attempts"]["Step Scale"] = request["Attempts"]["Step Scale"].lower()
+                        if request["Attempts"]["Step Scale"] != "year" and request["Attempts"][
+                            "Step Scale"] != "month" and request["Attempts"]["Step Scale"] != "week" and \
+                                        request["Attempts"]["Step Scale"] != "day" and request["Attempts"][
+                            "Step Scale"] != "hour" and request["Attempts"]["Step Scale"] != "minute":
+                            raise ValueError(json.loads(
+                                '{"ERROR": "Attempts Step Scale is invalid for request ' + str(count) + '"}'))
+                    else:
+                        raise ValueError(json.loads(
+                            '{"ERROR": "Attempts Step Scale is not a String for request ' + str(count) + '"}'))
+                    step_flag = True
+                else:
+                    request["Attempts"]["Step Scale"] = False
+
+                if "Step" in request["Attempts"]:
+                    data_flag = True
+                    if (isinstance(request["Attempts"]["Step"], int) is True) and (
+                        isinstance(request["Attempts"]["Step"], bool) is False):
+                        if step_flag is False:
+                            raise ValueError(json.loads(
+                                '{"ERROR": "Attempts Step can not be set without valid Step Scale for request ' + str(
+                                    count) + '"}'))
+                    else:
+                        raise ValueError(json.loads('{"ERROR": "Attempts Step is not a number for request ' + str(count) + '"}'))
+                else:
+                    request["Attempts"]["Step"] = False
+
+                if data_flag is False:
+                    raise ValueError(json.loads('{"ERROR": "Invalid input in Attempts for request ' + str(count) + '"}'))
+            else:
+                raise ValueError(json.loads('{"ERROR": "Invalid input in Attempts for request ' + str(count) + '"}'))
+    else:
+        request["Attempts"] = False
+
+
+def _validate_ips_input(request, count):
+    if "IPs" in request:
+        data_flag = False
+        if isinstance(request["IPs"], bool) is not True:
+            if isinstance(request["IPs"], dict) is True:
+                _key_check(request["IPs"], ["Count", "Geolocation", "Order"], "IPs", count)
+
+                if "Count" in request["IPs"]:
+                    data_flag = True
+                    if (isinstance(request["IPs"]["Count"], int) is not True) or (
+                        isinstance(request["IPs"]["Count"], bool) is True):
+                        raise ValueError(json.loads('{"ERROR": "IPs Count is not a number for request ' + str(count) + '"}'))
+                else:
+                    request["IPs"]["Count"] = False
+
+                if "Geolocation" in request["IPs"]:
+                    if isinstance(request["IPs"]["Geolocation"], bool) is not True:
+                        if isinstance(request["IPs"]["Geolocation"], dict) is True:
+                            _key_check(request["IPs"]["Geolocation"], ["LatLong", "Country", "Country Code", "City"], "IPs Geolocation", count)
+
+                            flag = False
+                            # Need to make sure they did not just pass in a random number or something
+                            if "LatLong" in request["IPs"]["Geolocation"]:
+                                flag = True
+                                if isinstance(request["IPs"]["Geolocation"]["LatLong"], bool) is not True:
+                                    raise ValueError(json.loads(
+                                        '{"ERROR": "IPs LatLong is not a boolean for request ' + str(count) + '"}'))
+                            else:
+                                request["IPs"]["Geolocation"]["LatLong"] = False
+
+                            if "Country" in request["IPs"]["Geolocation"]:
+                                flag = True
+                                if isinstance(request["IPs"]["Geolocation"]["Country"], bool) is not True:
+                                    raise ValueError(json.loads(
+                                        '{"ERROR": "IPs Country is not a boolean for request ' + str(count) + '"}'))
+                            else:
+                                request["IPs"]["Geolocation"]["Country"] = False
+
+                            if "Country Code" in request["IPs"]["Geolocation"]:
+                                flag = True
+                                if isinstance(request["IPs"]["Geolocation"]["Country Code"], bool) is not True:
+                                    raise ValueError(json.loads(
+                                        '{"ERROR": "IPs Country Code is not a boolean for request ' + str(count) + '"}'))
+                            else:
+                                request["IPs"]["Geolocation"]["Country Code"] = False
+
+                            if "City" in request["IPs"]["Geolocation"]:
+                                flag = True
+                                if isinstance(request["IPs"]["Geolocation"]["City"], bool) is not True:
+                                    raise ValueError(json.loads(
+                                        '{"ERROR": "IPs City is not a boolean for request ' + str(count) + '"}'))
+                            else:
+                                request["IPs"]["Geolocation"]["City"] = False
+                            if flag is False:
+                                raise ValueError(json.loads(
+                                    '{"ERROR": "Invalid input for Geolocation in IPs for request ' + str(count) + '"}'))
+                        else:
+                            raise ValueError(json.loads(
+                                '{"ERROR": "Invalid input for Geolocation in IPs for request ' + str(count) + '"}'))
+                else:
+                    request["IPs"]["Geolocation"] = False
+
+                if "Order" in request["IPs"]:
+                    data_flag = True
+                    if request["IPs"]["Order"].lower() != "asc" and request["IPs"]["Order"].lower() != "desc":
+                        raise ValueError(json.loads('{"ERROR": "IPs Order is not ASC or DESC for request ' + str(count) + '"}'))
+                else:
+                    request["IPs"]["Order"] = False
+
+                if data_flag is False:
+                    raise ValueError(json.loads('{"ERROR": "Invalid input in IPs for request ' + str(count) + '"}'))
+            else:
+                raise ValueError(json.loads('{"ERROR": "Invalid input in IPs for request ' + str(count) + '"}'))
+    else:
+        request["IPs"] = False
+
+
+def _validate_usernames_input(request, count):
+    if "Usernames" in request:
+        if isinstance(request["Usernames"], bool) is not True:
+            if isinstance(request["Usernames"], dict) is True:
+                _key_check(request["Usernames"], ["Count", "Order"], "Usernames", count)
+
+                data_flag = False
+                if "Count" in request["Usernames"]:
+                    data_flag = True
+                    if (isinstance(request["Usernames"]["Count"], int) is not True) or (
+                        isinstance(request["Usernames"]["Count"], bool) is True):
+                        raise ValueError(json.loads('{"ERROR": "Usernames Count is not a number for request ' + str(count) + '"}'))
+                else:
+                    request["Usernames"]["Count"] = False
+
+                if "Order" in request["Usernames"]:
+                    data_flag = True
+                    if isinstance(request["Usernames"]["Order"], str) is True:
+                        if request["Usernames"]["Order"].lower() != "asc" and request["Usernames"][
+                            "Order"].lower() != "desc":
+                            raise ValueError(json.loads(
+                                '{"ERROR": "Usernames Order is not set to ASC or DESC for request ' + str(count) + '"}'))
+                    else:
+                        return json.loads(
+                            '{"ERROR": "Usernames Order is not set to ASC or DESC for request ' + str(count) + '"}')
+                else:
+                    request["Usernames"]["Order"] = False
+
+                if data_flag is False:
+                    raise ValueError(json.loads('{"ERROR": "Invalid input in Usernames for request ' + str(count) + '"}'))
+            else:
+                raise ValueError(json.loads('{"ERROR": "Invalid input in Usernames for request ' + str(count) + '"}'))
+    else:
+        request["Usernames"] = False
+
+
+def _validate_passwords_input(request, count):
+    if "Passwords" in request:
+        if isinstance(request["Passwords"], bool) is not True:
+            if isinstance(request["Passwords"], dict) is True:
+                _key_check(request["Passwords"], ["Count", "Order"], "Passwords", count)
+
+                data_flag = False
+                if "Count" in request["Passwords"]:
+                    data_flag = True
+                    if (isinstance(request["Passwords"]["Count"], int) is not True) or (
+                        isinstance(request["Passwords"]["Count"], bool) is True):
+                        raise ValueError(json.loads('{"ERROR": "Passwords Count is not a number for request ' + str(count) + '"}'))
+                else:
+                    request["Passwords"]["Count"] = False
+
+                if "Order" in request["Passwords"]:
+                    data_flag = True
+                    if isinstance(request["Passwords"]["Order"], str) is True:
+                        if request["Passwords"]["Order"].lower() != "asc" and request["Passwords"][
+                            "Order"].lower() != "desc":
+                            raise ValueError(json.loads(
+                                '{"ERROR": "Passwords Order is not set to ASC or DESC for request ' + str(count) + '"}'))
+                    else:
+                        raise ValueError(json.loads(
+                            '{"ERROR": "Passwords Order is not set to ASC or DESC for request ' + str(count) + '"}'))
+                else:
+                    request["Passwords"]["Order"] = False
+
+                if data_flag is False:
+                    raise ValueError(json.loads('{"ERROR": "Invalid input in Passwords for request ' + str(count) + '"}'))
+            else:
+                raise ValueError(json.loads('{"ERROR": "Invalid input in Passwords for request ' + str(count) + '"}'))
+    else:
+        request["Passwords"] = False
+
+
+def _validate_ips_history_input(request, count):
+    if "IP History" in request:
+        if isinstance(request["IP History"], bool) is not True:
+            if isinstance(request["IP History"], dict) is True:
+                _key_check(request["IP History"], ["Geolocation", "Date Range", "Attempts"], "IP History", count)
+
+                data_flag = False
+                if "Geolocation" in request["IP History"]:
+                    data_flag = True
+                    if isinstance(request["IP History"]["Geolocation"], bool) is not True:
+                        if isinstance(request["IP History"]["Geolocation"], dict) is True:
+                            _key_check(request["IP History"]["Geolocation"], ["LatLong", "Country", "Country Code", "City"], "IP History Geolocation", count)
+
+                            flag = False
+                            # Need to make sure they did not just pass in a random number or something
+                            if "LatLong" in request["IP History"]["Geolocation"]:
+                                flag = True
+                                if isinstance(request["IP History"]["Geolocation"]["LatLong"], bool) is not True:
+                                    raise ValueError(json.loads(
+                                        '{"ERROR": "IP History LatLong is not a boolean for request ' + str(
+                                            count) + '"}'))
+                            else:
+                                request["IP History"]["Geolocation"]["LatLong"] = False
+
+                            if "Country" in request["IP History"]["Geolocation"]:
+                                flag = True
+                                if isinstance(request["IP History"]["Geolocation"]["Country"], bool) is not True:
+                                    raise ValueError(json.loads(
+                                        '{"ERROR": "IP History Country is not a boolean for request ' + str(
+                                            count) + '"}'))
+                            else:
+                                request["IP History"]["Geolocation"]["Country"] = False
+
+                            if "Country Code" in request["IP History"]["Geolocation"]:
+                                flag = True
+                                if isinstance(request["IP History"]["Geolocation"]["Country Code"], bool) is not True:
+                                    raise ValueError(json.loads(
+                                        '{"ERROR": "IP History Country Code is not a boolean for request ' + str(
+                                            count) + '"}'))
+                            else:
+                                request["IP History"]["Geolocation"]["Country Code"] = False
+
+                            if "City" in request["IP History"]["Geolocation"]:
+                                flag = True
+                                if isinstance(request["IP History"]["Geolocation"]["City"], bool) is not True:
+                                    raise ValueError(json.loads(
+                                        '{"ERROR": "IP History City is not a boolean for request ' + str(count) + '"}'))
+                            else:
+                                request["IP History"]["Geolocation"]["City"] = False
+
+                            if flag is False:
+                                raise ValueError(json.loads(
+                                    '{"ERROR": "Invalid input for Geolocation in IP History for request ' + str(
+                                        count) + '"}'))
+                        else:
+                            raise ValueError(json.loads(
+                                '{"ERROR": "Invalid input for Geolocation in IP History for request ' + str(
+                                    count) + '"}'))
+                else:
+                    request["IP History"]["Geolocation"] = False
+
+                if "Date Range" in request["IP History"]:
+                    data_flag = True
+                    if isinstance(request["IP History"]["Date Range"], bool) is not True:
+                        raise ValueError(json.loads(
+                            '{"ERROR": "IP History Date Range is not a boolean for request ' + str(count) + '"}'))
+                else:
+                    request["IP History"]["Date Range"] = False
+
+                if "Attempts" in request["IP History"]:
+                    data_flag = True
+                    if isinstance(request["IP History"]["Attempts"], bool) is not True:
+                        raise ValueError(json.loads(
+                            '{"ERROR": "IP History Attempts is not a boolean for request ' + str(count) + '"}'))
+                else:
+                    request["IP History"]["Attempts"] = False
+
+                if data_flag is False:
+                    raise ValueError(json.loads('{"ERROR": "Invalid input in IP History for request ' + str(count) + '"}'))
+            else:
+                raise ValueError(json.loads('{"ERROR": "Invalid input in IP History for request ' + str(count) + '"}'))
+    else:
+        request["IP History"] = False
+
+
+def _validate_uptime_input(request, count):
+    if "Uptime" in request:
+        if isinstance(request["Uptime"], bool) is not True:
+            if isinstance(request["Uptime"], dict) is True:
+                _key_check(request["Uptime"], ["Format"], "Uptime", count)
+
+                if "Format" in request["Uptime"]:
+                    if isinstance(request["Uptime"]["Format"], str) is True:
+                        request["Uptime"]["Format"] = request["Uptime"]["Format"].lower()
+                        if request["Uptime"]["Format"] != "epoch" and request["Uptime"]["Format"] != "date range" and \
+                                        request["Uptime"]["Format"] != "time since":
+                            raise ValueError(json.loads(
+                                '{"ERROR": "Uptime Format is not a valid format for request ' + str(count) + '"}'))
+                    else:
+                        raise ValueError(json.loads('{"ERROR": "Invalid input in Uptime for request ' + str(count) + '"}'))
+                else:
+                    # return False, json.loads('{"ERROR": "Invalid input in Uptime for request ' + str(count) + '"}')
+                    request["Uptime"]["Format"] = False
+            else:
+                raise ValueError(json.loads('{"ERROR": "Invalid input in Uptime for request ' + str(count) + '"}'))
+    else:
+        request["Uptime"] = False
 
 
 def _process_honeypot_put(body, hpid):
