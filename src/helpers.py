@@ -6,7 +6,9 @@ import pprint
 import json
 import arrow
 
-from src.json_templates import response_get_honeypot, response_get_honeypots, geolocation
+from src.json_templates import response_get_honeypot, response_get_honeypots, geolocation, default_attempts, \
+    default_services, default_ips, default_usernames, default_passwords, default_ip_history, default_uptime, \
+    default_geolocations, default_internal_geolocation
 from src.database import Database
 
 db = Database("postgres", "postgres", "Password1", "10.11.12.80", "Beekeeper")
@@ -58,6 +60,7 @@ def _validate_honeypot_input(body):
                 _validate_ips_input(request, count)
                 _validate_usernames_input(request, count)
                 _validate_passwords_input(request, count)
+                _validate_geolocations_input(request, count)
                 _validate_ips_history_input(request, count)
                 _validate_uptime_input(request, count)
             except ValueError:
@@ -77,7 +80,7 @@ def _key_check(_dict, _list, loc, count):
 
 
 def _validate_keys_input(request, count):
-    key_list = ["Request", "Services", "Attempts", "IPs", "Usernames", "Passwords", "IP History", "Uptime"]
+    key_list = ["Request", "Services", "Attempts", "IPs", "Usernames", "Passwords", "Geolocations", "IP History", "Uptime"]
 
     try:
         _key_check(request, key_list, "Requests", count)
@@ -95,6 +98,8 @@ def _validate_request_input(request, count):
     if isinstance(request["Request"], dict) is not True:
         raise ValueError(json.loads('{"ERROR": "Invalid Request type for request ' + str(count) + '"}'))
     else:
+        _key_check(request["Request"], ["ID", "Type"], "Request", count)
+
         if ("ID" in request["Request"]) and ("Type" in request["Request"]):
             if isinstance(request["Request"]["ID"], str) is False:
                 raise ValueError(json.loads('{"ERROR": "Request ID was not a string type for request ' + str(count) + '"}'))
@@ -103,8 +108,10 @@ def _validate_request_input(request, count):
                 raise ValueError(json.loads('{"ERROR": "Request Type was not a string type for request ' + str(count) + '"}'))
             else:
                 request["Request"]["Type"] = request["Request"]["Type"].lower()
-                if request["Request"]["Type"] != "IP" or request["Request"]["Type"] != "HP":
+                if request["Request"]["Type"] != "ip" and request["Request"]["Type"] != "honeypot":
                     raise ValueError(json.loads('{"ERROR": "Request Type was invalid for request ' + str(count) + '"}'))
+        else:
+            raise ValueError(json.loads('{"ERROR": "Request was invalid for request ' + str(count) + '"}'))
 
         if ("Services" in request) is False and ("Attempts" in request) is False and ("IPs" in request) is False and (
         "Usernames" in request) is False and ("Passwords" in request) is False and (
@@ -143,8 +150,13 @@ def _validate_services_input(request, count):
                             count) + '"}'))
             else:
                 raise ValueError(json.loads('{"ERROR": "Invalid input in Services for request ' + str(count) + '"}'))
+        elif request["Services"] is True:
+            request["Services"] = default_services
     else:
-        request["Services"] = False
+        if "Default" in request["Request"]:
+            request["Services"] = default_services
+        else:
+            request["Services"] = False
 
 
 def _validate_attempts_input(request, count):
@@ -212,8 +224,13 @@ def _validate_attempts_input(request, count):
                     raise ValueError(json.loads('{"ERROR": "Invalid input in Attempts for request ' + str(count) + '"}'))
             else:
                 raise ValueError(json.loads('{"ERROR": "Invalid input in Attempts for request ' + str(count) + '"}'))
+        elif request["Attempts"] is True:
+            request["Attempts"] = default_attempts
     else:
-        request["Attempts"] = False
+        if "Default" in request["Request"]:
+            request["Attempts"] = default_attempts
+        else:
+            request["Attempts"] = False
 
 
 def _validate_ips_input(request, count):
@@ -275,22 +292,30 @@ def _validate_ips_input(request, count):
                         else:
                             raise ValueError(json.loads(
                                 '{"ERROR": "Invalid input for Geolocation in IPs for request ' + str(count) + '"}'))
+                    elif request["IPs"]["Geolocation"] is True:
+                        request["IPs"]["Geolocation"] = default_internal_geolocation
                 else:
                     request["IPs"]["Geolocation"] = False
 
                 if "Order" in request["IPs"]:
                     data_flag = True
-                    if request["IPs"]["Order"].lower() != "asc" and request["IPs"]["Order"].lower() != "desc":
+                    request["IPs"]["Order"] = request["IPs"]["Order"].lower()
+                    if request["IPs"]["Order"] != "asc" and request["IPs"]["Order"] != "desc":
                         raise ValueError(json.loads('{"ERROR": "IPs Order is not ASC or DESC for request ' + str(count) + '"}'))
                 else:
-                    request["IPs"]["Order"] = False
+                    request["IPs"]["Order"] = 'asc'
 
                 if data_flag is False:
                     raise ValueError(json.loads('{"ERROR": "Invalid input in IPs for request ' + str(count) + '"}'))
             else:
                 raise ValueError(json.loads('{"ERROR": "Invalid input in IPs for request ' + str(count) + '"}'))
+        elif request["IPs"] is True:
+            request["IPs"] = default_ips
     else:
-        request["IPs"] = False
+        if "Default" in request["Request"]:
+            request["IPs"] = default_ips
+        else:
+            request["IPs"] = False
 
 
 def _validate_usernames_input(request, count):
@@ -311,22 +336,28 @@ def _validate_usernames_input(request, count):
                 if "Order" in request["Usernames"]:
                     data_flag = True
                     if isinstance(request["Usernames"]["Order"], str) is True:
-                        if request["Usernames"]["Order"].lower() != "asc" and request["Usernames"][
-                            "Order"].lower() != "desc":
+                        request["Usernames"]["Order"] = request["Usernames"]["Order"].lower()
+                        if request["Usernames"]["Order"] != "asc" and request["Usernames"][
+                            "Order"] != "desc":
                             raise ValueError(json.loads(
                                 '{"ERROR": "Usernames Order is not set to ASC or DESC for request ' + str(count) + '"}'))
                     else:
                         return json.loads(
                             '{"ERROR": "Usernames Order is not set to ASC or DESC for request ' + str(count) + '"}')
                 else:
-                    request["Usernames"]["Order"] = False
+                    request["Usernames"]["Order"] = 'asc'
 
                 if data_flag is False:
                     raise ValueError(json.loads('{"ERROR": "Invalid input in Usernames for request ' + str(count) + '"}'))
             else:
                 raise ValueError(json.loads('{"ERROR": "Invalid input in Usernames for request ' + str(count) + '"}'))
+        elif request["Usernames"] is True:
+            request["Usernames"] = default_usernames
     else:
-        request["Usernames"] = False
+        if "Default" in request["Request"]:
+            request["Usernames"] = default_usernames
+        else:
+            request["Usernames"] = False
 
 
 def _validate_passwords_input(request, count):
@@ -347,22 +378,79 @@ def _validate_passwords_input(request, count):
                 if "Order" in request["Passwords"]:
                     data_flag = True
                     if isinstance(request["Passwords"]["Order"], str) is True:
-                        if request["Passwords"]["Order"].lower() != "asc" and request["Passwords"][
-                            "Order"].lower() != "desc":
+                        request["Passwords"]["Order"] = request["Passwords"]["Order"].lower()
+                        if request["Passwords"]["Order"] != "asc" and request["Passwords"][
+                            "Order"] != "desc":
                             raise ValueError(json.loads(
                                 '{"ERROR": "Passwords Order is not set to ASC or DESC for request ' + str(count) + '"}'))
                     else:
                         raise ValueError(json.loads(
                             '{"ERROR": "Passwords Order is not set to ASC or DESC for request ' + str(count) + '"}'))
                 else:
-                    request["Passwords"]["Order"] = False
+                    request["Passwords"]["Order"] = 'asc'
 
                 if data_flag is False:
                     raise ValueError(json.loads('{"ERROR": "Invalid input in Passwords for request ' + str(count) + '"}'))
             else:
                 raise ValueError(json.loads('{"ERROR": "Invalid input in Passwords for request ' + str(count) + '"}'))
+        elif request["Passwords"] is True:
+            request["Passwords"] = default_passwords
     else:
-        request["Passwords"] = False
+        if "Default" in request["Request"]:
+            request["Passwords"] = default_passwords
+        else:
+            request["Passwords"] = False
+
+
+def _validate_geolocations_input(request, count):
+    if "Geolocations" in request:
+        if isinstance(request["Geolocations"], bool) is not True:
+            if isinstance(request["Geolocations"], dict) is True:
+                _key_check(request["Geolocations"], ["Country Code", "Count", "Order"], "Geolocations", count)
+
+                data_flag = False
+                if "Count" in request["Geolocations"]:
+                    data_flag = True
+                    if (isinstance(request["Geolocations"]["Count"], int) is not True) or (
+                                isinstance(request["Geolocations"]["Count"], bool) is True):
+                        raise ValueError(
+                            json.loads('{"ERROR": "Geolocations Count is not a number for request ' + str(count) + '"}'))
+                else:
+                    request["Geolocations"]["Count"] = False
+
+                if "Country Code" in request["Geolocations"]:
+                    data_flag = True
+                    if isinstance(request["Geolocations"]["Country Code"], bool) is False:
+                        raise ValueError(json.loads('{"ERROR": "Country Code in Geolocations must be a bool for request ' + str(count) + '"}'))
+                else:
+                    request["Geolocations"]["Country Code"] = False
+
+                if "Order" in request["Geolocations"]:
+                    data_flag = True
+                    if isinstance(request["Geolocations"]["Order"], str) is True:
+                        request["Geolocations"]["Order"] = request["Geolocations"]["Order"].lower()
+                        if request["Geolocations"]["Order"] != "asc" and request["Geolocations"][
+                            "Order"] != "desc":
+                            raise ValueError(json.loads(
+                                '{"ERROR": "Geolocations Order is not set to ASC or DESC for request ' + str(count) + '"}'))
+                    else:
+                        raise ValueError(json.loads(
+                            '{"ERROR": "Geolocations Order is not set to ASC or DESC for request ' + str(count) + '"}'))
+                else:
+                    request["Geolocations"]["Order"] = 'asc'
+
+                if data_flag is False:
+                    raise ValueError(json.loads('{"ERROR": "Invalid input in Geolocations for request ' + str(count) + '"}'))
+            else:
+                raise ValueError(
+                    json.loads('{"ERROR": "Invalid input in Geolocations for request ' + str(count) + '"}'))
+        elif request["Geolocations"] is True:
+            request["Geolocations"] = default_geolocations
+    else:
+        if "Default" in request["Request"]:
+            request["Geolocations"] = default_geolocations
+        else:
+            request["Geolocations"] = False
 
 
 def _validate_ips_history_input(request, count):
@@ -423,6 +511,8 @@ def _validate_ips_history_input(request, count):
                             raise ValueError(json.loads(
                                 '{"ERROR": "Invalid input for Geolocation in IP History for request ' + str(
                                     count) + '"}'))
+                    elif request["IP History"]["Geolocation"] is True:
+                        request["IP History"]["Geolocation"] = default_internal_geolocation
                 else:
                     request["IP History"]["Geolocation"] = False
 
@@ -446,8 +536,13 @@ def _validate_ips_history_input(request, count):
                     raise ValueError(json.loads('{"ERROR": "Invalid input in IP History for request ' + str(count) + '"}'))
             else:
                 raise ValueError(json.loads('{"ERROR": "Invalid input in IP History for request ' + str(count) + '"}'))
+        elif request["IP History"] is True:
+            request["IP History"] = default_ip_history
     else:
-        request["IP History"] = False
+        if "Default" in request["Request"]:
+            request["IP History"] = default_ip_history
+        else:
+            request["IP History"] = False
 
 
 def _validate_uptime_input(request, count):
@@ -469,8 +564,13 @@ def _validate_uptime_input(request, count):
                     raise ValueError(json.loads('{"ERROR": "Invalid input in Uptime for request ' + str(count) + '"}'))
             else:
                 raise ValueError(json.loads('{"ERROR": "Invalid input in Uptime for request ' + str(count) + '"}'))
+        elif request["Uptime"] is True:
+            request["Uptime"] = default_uptime
     else:
-        request["Uptime"] = False
+        if "Default" in request["Request"]:
+            request["Uptime"] = default_uptime
+        else:
+            request["Uptime"] = False
 
 
 def _process_honeypot_put(body, hpid):
